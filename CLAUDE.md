@@ -127,6 +127,7 @@ cargo fmt
 
 ## Roadmap (High Level)
 
+
 - [ ] Chess engine with legal move generation and rule enforcement
 - [ ] Basic TUI board rendering and human input
 - [ ] Random and minimax agents (classical eval)
@@ -137,3 +138,5 @@ cargo fmt
 - [ ] Policy network / MCTS hybrid
 - [ ] Opening book support
 - [ ] ELO tracking across agent versions
+
+A planning document for this project has been generated and is available in plans/overview.md
