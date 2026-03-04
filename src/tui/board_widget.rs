@@ -137,8 +137,8 @@ fn render_board(position: &Chess, state: &BoardState, area: Rect, buf: &mut Buff
             if let Some(piece) = position.board().piece_at(sq) {
                 let glyph = piece_glyph(piece.role, piece.color);
                 let fg = match piece.color {
-                    ChessColor::White => Color::Rgb(30, 10, 10),
-                    ChessColor::Black => Color::Rgb(220, 220, 220),
+                    ChessColor::White => Color::Rgb(220, 220, 220),
+                    ChessColor::Black => Color::Rgb(30, 10, 10),
                 };
                 if let Some(cell) = buf.cell_mut(Position::new(col + 1, row)) {
                     cell.set_symbol(glyph).set_fg(fg);
