@@ -35,7 +35,7 @@ impl MenuSelection {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MainMenu {
     pub selected_index: usize,
 }
