@@ -11,7 +11,7 @@ use ratatui::{DefaultTerminal, Frame};
 use shakmaty::Color as ChessColor;
 use shakmaty::{File, Outcome, Position, Rank, Role, Square};
 
-use crate::agents::{Agent, RandomAgent};
+use crate::agents::{Agent, MinimaxAgent, NegamaxAgent};
 use crate::chess::board::GameState;
 use crate::chess::Move;
 use crate::tui::board_widget::BoardState;
@@ -201,15 +201,15 @@ impl App {
             }
             MenuSelection::HumanVsAI => {
                 self.ai_white = None;
-                self.ai_black = Some(Box::new(RandomAgent::default()));
+                self.ai_black = Some(Box::new(NegamaxAgent::new(3)));
                 self.white_name = "Human".to_string();
-                self.black_name = "AI (Random)".to_string();
+                self.black_name = "AI (Negamax d3)".to_string();
             }
             MenuSelection::AIVsAI => {
-                self.ai_white = Some(Box::new(RandomAgent::default()));
-                self.ai_black = Some(Box::new(RandomAgent::default()));
-                self.white_name = "AI (Random)".to_string();
-                self.black_name = "AI (Random)".to_string();
+                self.ai_white = Some(Box::new(NegamaxAgent::new(3)));
+                self.ai_black = Some(Box::new(MinimaxAgent::new(3)));
+                self.white_name = "AI (Negamax d3)".to_string();
+                self.black_name = "AI (Minimax d3)".to_string();
             }
             _ => unreachable!(),
         }
