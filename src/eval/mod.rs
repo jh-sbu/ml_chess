@@ -4,7 +4,6 @@ pub mod classical;
 pub mod neural;
 
 pub use classical::evaluate;
-pub use neural::evaluate_nn;
 
 pub type Score = i32;
 pub const MATE_SCORE: Score = 1_000_000;
