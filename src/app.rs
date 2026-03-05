@@ -36,6 +36,7 @@ pub struct App {
     ai_agent_rx: Option<mpsc::Receiver<(Move, Box<dyn Agent + Send>)>>,
     ai_thinking_color: Option<ChessColor>,
     ai_is_thinking: bool,
+    depth: u32,
     status: String,
 }
 
@@ -53,8 +54,16 @@ impl App {
             ai_agent_rx: None,
             ai_thinking_color: None,
             ai_is_thinking: false,
+            depth: 3,
             status: String::new(),
+
         }
+    }
+
+    pub fn new_with_mode(mode: MenuSelection, depth: u32) -> Self {
+        let mut app = Self { depth, ..Self::new() };
+        app.start_game(mode);
+        app
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -201,15 +210,15 @@ impl App {
             }
             MenuSelection::HumanVsAI => {
                 self.ai_white = None;
-                self.ai_black = Some(Box::new(NegamaxAgent::new(3)));
+                self.ai_black = Some(Box::new(NegamaxAgent::new(self.depth)));
                 self.white_name = "Human".to_string();
-                self.black_name = "AI (Negamax d3)".to_string();
+                self.black_name = format!("AI (Negamax d{})", self.depth);
             }
             MenuSelection::AIVsAI => {
-                self.ai_white = Some(Box::new(NegamaxAgent::new(3)));
-                self.ai_black = Some(Box::new(MinimaxAgent::new(3)));
-                self.white_name = "AI (Negamax d3)".to_string();
-                self.black_name = "AI (Minimax d3)".to_string();
+                self.ai_white = Some(Box::new(NegamaxAgent::new(self.depth)));
+                self.ai_black = Some(Box::new(MinimaxAgent::new(self.depth)));
+                self.white_name = format!("AI (Negamax d{})", self.depth);
+                self.black_name = format!("AI (Minimax d{})", self.depth);
             }
             _ => unreachable!(),
         }
