@@ -9,7 +9,7 @@ use shakmaty::{Chess, Color, EnPassantMode, Position};
 use crate::agents::Agent;
 use crate::chess::{GameState, Move};
 use crate::eval::classical::evaluate;
-use crate::eval::{Score, MATE_SCORE};
+use crate::eval::{MATE_SCORE, Score};
 
 type Tt = HashMap<u64, (Score, u32)>;
 
@@ -37,7 +37,11 @@ fn negamax(
 
     if depth == 0 || moves.is_empty() {
         let raw = evaluate(pos);
-        return Some(if pos.turn() == Color::White { raw } else { -raw });
+        return Some(if pos.turn() == Color::White {
+            raw
+        } else {
+            -raw
+        });
     }
 
     let mut moves = moves;
@@ -70,7 +74,10 @@ pub struct NegamaxAgent {
 
 impl NegamaxAgent {
     pub fn new(depth: u32) -> Self {
-        Self { depth, name: format!("Negamax(d{})", depth) }
+        Self {
+            depth,
+            name: format!("Negamax(d{})", depth),
+        }
     }
 }
 

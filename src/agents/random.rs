@@ -12,7 +12,9 @@ pub struct RandomAgent {
 
 impl Default for RandomAgent {
     fn default() -> Self {
-        Self { name: "Random".to_string() }
+        Self {
+            name: "Random".to_string(),
+        }
     }
 }
 

@@ -13,7 +13,10 @@ pub struct HumanAgent {
 
 impl HumanAgent {
     pub fn new(name: impl Into<String>, move_rx: mpsc::Receiver<Move>) -> Self {
-        Self { name: name.into(), move_rx }
+        Self {
+            name: name.into(),
+            move_rx,
+        }
     }
 }
 
@@ -32,8 +35,8 @@ impl Agent for HumanAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::moves::parse_uci;
     use crate::chess::GameState;
+    use crate::chess::moves::parse_uci;
     use std::sync::mpsc;
 
     #[test]

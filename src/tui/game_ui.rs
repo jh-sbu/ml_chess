@@ -10,7 +10,7 @@ use shakmaty::{Chess, Position};
 
 use crate::chess::board::GameState;
 use crate::chess::moves::move_to_san;
-use crate::tui::board_widget::{BoardState, BoardWidget, BOARD_WIDTH};
+use crate::tui::board_widget::{BOARD_WIDTH, BoardState, BoardWidget};
 
 pub struct GameUiState<'a> {
     pub game_state: &'a GameState,
@@ -21,11 +21,8 @@ pub struct GameUiState<'a> {
 }
 
 pub fn render_game_ui(ui: &GameUiState<'_>, area: Rect, buf: &mut Buffer) {
-    let [board_area, sidebar_area] = Layout::horizontal([
-        Constraint::Length(BOARD_WIDTH),
-        Constraint::Min(0),
-    ])
-    .areas(area);
+    let [board_area, sidebar_area] =
+        Layout::horizontal([Constraint::Length(BOARD_WIDTH), Constraint::Min(0)]).areas(area);
 
     BoardWidget {
         position: &ui.game_state.position,
@@ -80,9 +77,7 @@ fn render_players(ui: &GameUiState<'_>, area: Rect, buf: &mut Buffer) {
 
 fn render_status(ui: &GameUiState<'_>, area: Rect, buf: &mut Buffer) {
     let style = if ui.game_state.is_checkmate() {
-        Style::new()
-            .fg(Color::Red)
-            .add_modifier(Modifier::BOLD)
+        Style::new().fg(Color::Red).add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };

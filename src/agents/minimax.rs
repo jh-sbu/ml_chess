@@ -9,7 +9,7 @@ use shakmaty::{Chess, Color, EnPassantMode, Position};
 use crate::agents::Agent;
 use crate::chess::{GameState, Move};
 use crate::eval::classical::evaluate;
-use crate::eval::{Score, MATE_SCORE};
+use crate::eval::{MATE_SCORE, Score};
 
 type Tt = HashMap<u64, (Score, u32)>;
 
@@ -90,7 +90,10 @@ pub struct MinimaxAgent {
 
 impl MinimaxAgent {
     pub fn new(depth: u32) -> Self {
-        Self { depth, name: format!("Minimax(d{})", depth) }
+        Self {
+            depth,
+            name: format!("Minimax(d{})", depth),
+        }
     }
 }
 
@@ -118,8 +121,7 @@ impl Agent for MinimaxAgent {
                     break;
                 }
                 let new_pos = state.position.clone().play(mv).expect("legal move");
-                let score =
-                    alphabeta(&new_pos, d - 1, alpha, beta, !maximizing, deadline, &mut tt);
+                let score = alphabeta(&new_pos, d - 1, alpha, beta, !maximizing, deadline, &mut tt);
                 let Some(score) = score else {
                     completed = false;
                     break;

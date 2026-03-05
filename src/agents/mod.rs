@@ -9,6 +9,7 @@ pub mod random;
 pub use human::HumanAgent;
 pub use minimax::MinimaxAgent;
 pub use negamax::NegamaxAgent;
+pub use nn_agent::NNAgent;
 pub use random::RandomAgent;
 
 use crate::chess::{GameState, Move};

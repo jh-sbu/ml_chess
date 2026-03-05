@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use burn::backend::NdArray;
+use burn::backend::ndarray::NdArrayDevice;
 use burn::{
     config::Config,
     module::Module,
@@ -10,12 +12,10 @@ use burn::{
         backend::Backend,
     },
 };
-use burn::backend::NdArray;
-use burn::backend::ndarray::NdArrayDevice;
 use shakmaty::{Color, Position, Role};
 
-use crate::chess::GameState;
 use super::Score;
+use crate::chess::GameState;
 
 /// Encode a chess position as a flat float array of 832 elements:
 /// 12 planes (one per piece type per color) + 1 side-to-move plane, each 64 squares.
@@ -91,8 +91,7 @@ impl<B: Backend> ChessValueNet<B> {
 pub fn evaluate_nn(state: &GameState, model: &ChessValueNet<NdArray>) -> Score {
     let device = NdArrayDevice::default();
     let encoded = encode_position(state);
-    let tensor = Tensor::<NdArray, 1>::from_floats(encoded.as_slice(), &device)
-        .reshape([1, 832]);
+    let tensor = Tensor::<NdArray, 1>::from_floats(encoded.as_slice(), &device).reshape([1, 832]);
     let output = model.forward(tensor);
     let val: f32 = output.flatten::<1>(0, 1).into_scalar();
     (val * 1000.0) as Score

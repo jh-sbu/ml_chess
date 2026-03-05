@@ -139,9 +139,9 @@ fn render_board(position: &Chess, state: &BoardState, area: Rect, buf: &mut Buff
                 // Adaptive contrast: use dark fg on light backgrounds, light fg on dark
                 let is_light_bg = !matches!(bg, DARK_SQ_BG);
                 let fg = match (piece.color, is_light_bg) {
-                    (ChessColor::White, true) => Color::Rgb(40, 40, 40),   // dark on light bg
+                    (ChessColor::White, true) => Color::Rgb(40, 40, 40), // dark on light bg
                     (ChessColor::White, false) => Color::Rgb(240, 240, 240), // light on dark bg
-                    (ChessColor::Black, true) => Color::Rgb(20, 10, 10),   // dark on light bg
+                    (ChessColor::Black, true) => Color::Rgb(20, 10, 10), // dark on light bg
                     (ChessColor::Black, false) => Color::Rgb(240, 220, 200), // light on dark bg
                 };
                 if let Some(cell) = buf.cell_mut(Position::new(col + 1, row)) {

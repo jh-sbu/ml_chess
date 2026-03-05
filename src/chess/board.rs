@@ -25,6 +25,13 @@ impl GameState {
         }
     }
 
+    pub fn from_pos(position: Chess) -> Self {
+        Self {
+            position,
+            history: vec![],
+        }
+    }
+
     pub fn from_fen(s: &str) -> Result<Self, BoardError> {
         let fen: Fen = s
             .parse()

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -11,11 +12,11 @@ use ratatui::{DefaultTerminal, Frame};
 use shakmaty::Color as ChessColor;
 use shakmaty::{File, Outcome, Position, Rank, Role, Square};
 
-use crate::agents::{Agent, MinimaxAgent, NegamaxAgent};
-use crate::chess::board::GameState;
+use crate::agents::{Agent, NNAgent, NegamaxAgent};
 use crate::chess::Move;
+use crate::chess::board::GameState;
 use crate::tui::board_widget::BoardState;
-use crate::tui::game_ui::{render_game_ui, GameUiState};
+use crate::tui::game_ui::{GameUiState, render_game_ui};
 use crate::tui::menu::{MainMenu, MenuSelection};
 
 pub enum Screen {
@@ -37,6 +38,7 @@ pub struct App {
     ai_thinking_color: Option<ChessColor>,
     ai_is_thinking: bool,
     depth: u32,
+    model_path: Option<PathBuf>,
     status: String,
 }
 
@@ -55,13 +57,17 @@ impl App {
             ai_thinking_color: None,
             ai_is_thinking: false,
             depth: 3,
+            model_path: None,
             status: String::new(),
-
         }
     }
 
-    pub fn new_with_mode(mode: MenuSelection, depth: u32) -> Self {
-        let mut app = Self { depth, ..Self::new() };
+    pub fn new_with_model(mode: MenuSelection, depth: u32, model_path: Option<PathBuf>) -> Self {
+        let mut app = Self {
+            depth,
+            model_path,
+            ..Self::new()
+        };
         app.start_game(mode);
         app
     }
@@ -81,7 +87,12 @@ impl App {
     }
 
     fn handle_event(&mut self, ev: Event) -> bool {
-        let Event::Key(KeyEvent { code, kind: KeyEventKind::Press, .. }) = ev else {
+        let Event::Key(KeyEvent {
+            code,
+            kind: KeyEventKind::Press,
+            ..
+        }) = ev
+        else {
             return false;
         };
         match &self.screen {
@@ -182,6 +193,17 @@ impl App {
         }
     }
 
+    fn build_nn_agent(&self) -> NNAgent {
+        let depth = self.depth;
+        if let Some(path) = &self.model_path {
+            match NNAgent::load(path, depth) {
+                Ok(agent) => return agent,
+                Err(e) => eprintln!("Warning: could not load model: {e}; using random weights"),
+            }
+        }
+        NNAgent::new_random(depth)
+    }
+
     /// Returns true if the app should quit.
     fn start_game(&mut self, selection: MenuSelection) -> bool {
         match selection {
@@ -209,16 +231,18 @@ impl App {
                 self.black_name = "Black".to_string();
             }
             MenuSelection::HumanVsAI => {
+                let nn = self.build_nn_agent();
                 self.ai_white = None;
-                self.ai_black = Some(Box::new(NegamaxAgent::new(self.depth)));
+                self.black_name = format!("AI ({}) d{}", nn.name(), self.depth);
+                self.ai_black = Some(Box::new(nn));
                 self.white_name = "Human".to_string();
-                self.black_name = format!("AI (Negamax d{})", self.depth);
             }
             MenuSelection::AIVsAI => {
-                self.ai_white = Some(Box::new(NegamaxAgent::new(self.depth)));
-                self.ai_black = Some(Box::new(MinimaxAgent::new(self.depth)));
-                self.white_name = format!("AI (Negamax d{})", self.depth);
-                self.black_name = format!("AI (Minimax d{})", self.depth);
+                let nn = self.build_nn_agent();
+                self.white_name = format!("AI ({}) d{}", nn.name(), self.depth);
+                self.ai_white = Some(Box::new(nn));
+                self.ai_black = Some(Box::new(NegamaxAgent::new(self.depth)));
+                self.black_name = format!("AI (Negamax d{})", self.depth);
             }
             _ => unreachable!(),
         }
@@ -260,7 +284,13 @@ impl App {
             let found = legal
                 .iter()
                 .filter(|mv| mv.from() == Some(from) && mv.to() == to)
-                .max_by_key(|mv| if mv.promotion() == Some(Role::Queen) { 1 } else { 0 })
+                .max_by_key(|mv| {
+                    if mv.promotion() == Some(Role::Queen) {
+                        1
+                    } else {
+                        0
+                    }
+                })
                 .cloned();
 
             if let Some(mv) = found {
