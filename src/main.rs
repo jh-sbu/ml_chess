@@ -2,6 +2,7 @@ mod agents;
 mod app;
 mod chess;
 mod eval;
+mod training;
 mod tui;
 
 use std::path::PathBuf;
@@ -31,12 +32,15 @@ enum Commands {
         #[arg(long)]
         model: Option<PathBuf>,
     },
-    /// Train neural network (Phase 11)
+    /// Train neural network
     Train {
         #[arg(long)]
         games: Option<u32>,
         #[arg(long)]
         epochs: Option<u32>,
+        /// Output path for saved model (without extension)
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -46,8 +50,9 @@ fn main() -> anyhow::Result<()> {
         None => run_menu(),
         Some(Commands::Play { depth, model }) => run_play(depth.unwrap_or(3), model),
         Some(Commands::Watch { depth, model }) => run_watch(depth.unwrap_or(3), model),
-        Some(Commands::Train { games, epochs }) => {
-            run_train(games.unwrap_or(100), epochs.unwrap_or(10))
+        Some(Commands::Train { games, epochs, output }) => {
+            let output = output.unwrap_or_else(|| PathBuf::from("chess_model"));
+            run_train(games.unwrap_or(100), epochs.unwrap_or(10), output)
         }
     }
 }
@@ -75,7 +80,27 @@ fn run_watch(depth: u32, model: Option<PathBuf>) -> anyhow::Result<()> {
     result
 }
 
-fn run_train(games: u32, epochs: u32) -> anyhow::Result<()> {
-    eprintln!("Training not yet implemented (Phase 11). games={games}, epochs={epochs}");
+fn run_train(games: u32, epochs: u32, output: PathBuf) -> anyhow::Result<()> {
+    eprintln!("Generating {games} self-play games...");
+    let records = training::self_play::generate_games(games as usize, 1);
+    eprintln!(
+        "Generated {} games with {} total positions.",
+        records.len(),
+        records.iter().map(|r| r.positions.len()).sum::<usize>()
+    );
+
+    #[cfg(feature = "train")]
+    {
+        use training::trainer::{TrainingConfig, train};
+        let config = TrainingConfig { epochs: epochs as usize, batch_size: 64, lr: 1e-3 };
+        eprintln!("Training for {epochs} epochs...");
+        train(config, &records, &output)?;
+        eprintln!("Model saved to {}", output.display());
+    }
+    #[cfg(not(feature = "train"))]
+    {
+        let _ = (epochs, output);
+        eprintln!("Tip: run with `--features train` to enable the training loop.");
+    }
     Ok(())
 }
