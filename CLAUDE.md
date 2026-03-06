@@ -1,4 +1,6 @@
-# ml_chess — Claude Code Project Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Goals
 
@@ -6,77 +8,9 @@ A terminal-based chess application written in Rust with the following pillars:
 
 1. **Playable TUI chess game** — human-vs-human and human-vs-AI via Ratatui
 2. **Traditional AI agents** — search-based opponents (minimax, negamax, alpha-beta pruning, iterative deepening, etc.)
-3. **ML/DL agents** — neural network opponents trained with the `burn` deep learning library (value networks, policy networks, MCTS + NN, etc.)
-4. **Training infrastructure** — self-play pipelines, dataset generation, model checkpointing, and evaluation harnesses
+3. **ML/DL agents** — neural network opponents trained with the `burn` deep learning library
+4. **Training infrastructure** — self-play pipelines, dataset generation, model checkpointing
 5. **AI spectator mode** — watch two AI agents play each other in the TUI
-
----
-
-## Key Dependencies
-
-| Crate | Purpose |
-|-------|---------|
-| `ratatui` | TUI rendering and layout |
-| `burn` | Deep learning framework for ML agents |
-
-Additional crates to add as needed:
-- `crossterm` — terminal backend for ratatui (already a ratatui dependency)
-- `shakmaty` or `chess` — battle-tested move generation / rule enforcement (consider before rolling your own)
-- `serde` / `serde_json` — serializing game records, model configs, training datasets
-- `clap` — CLI argument parsing (subcommands: `play`, `train`, `watch`)
-- `rayon` — parallelism for search and self-play data generation
-- `rand` / `rand_distr` — stochastic rollouts, noise injection for training
-
----
-
-## Architecture Overview
-
-### Planned Module Structure
-
-```
-src/
-├── main.rs              # Entry point; CLI dispatch
-├── app.rs               # Top-level application state + event loop
-├── chess/
-│   ├── mod.rs
-│   ├── board.rs         # Board representation (bitboards or mailbox)
-│   ├── moves.rs         # Move generation and validation
-│   ├── rules.rs         # Check, checkmate, stalemate, draw conditions
-│   └── notation.rs      # FEN / PGN parsing and serialization
-├── tui/
-│   ├── mod.rs
-│   ├── board_widget.rs  # Ratatui widget for the chess board
-│   ├── game_ui.rs       # Full game screen layout
-│   └── menu.rs          # Main menu and settings screens
-├── agents/
-│   ├── mod.rs           # Agent trait definition
-│   ├── human.rs         # Passes input from TUI to move selection
-│   ├── random.rs        # Random legal move agent (baseline)
-│   ├── minimax.rs       # Minimax with alpha-beta pruning
-│   ├── negamax.rs       # Negamax variant
-│   └── nn_agent.rs      # Burn-powered neural network agent
-├── eval/
-│   ├── mod.rs
-│   ├── classical.rs     # Hand-crafted evaluation (material, PST, mobility)
-│   └── neural.rs        # Neural network inference wrapper
-└── training/
-    ├── mod.rs
-    ├── self_play.rs     # Self-play game generation
-    ├── dataset.rs       # Position/label dataset construction
-    ├── trainer.rs       # Burn training loop
-    └── checkpoint.rs    # Model saving and loading
-```
-
-### Agent Trait
-
-All agents should implement a common trait so they are interchangeable in both game play and training:
-
-```rust
-pub trait Agent {
-    fn select_move(&mut self, board: &Board, time_budget: Duration) -> Move;
-    fn name(&self) -> &str;
-}
-```
 
 ---
 
@@ -86,15 +20,22 @@ pub trait Agent {
 # Debug build
 cargo build
 
-# Run (once CLI is wired up)
-cargo run -- play          # Human vs AI
-cargo run -- watch         # AI vs AI spectator mode
-cargo run -- train         # Start a training run
+# Run — no subcommand opens the TUI main menu
+cargo run
+cargo run -- play [--depth N] [--model PATH]   # Human vs AI
+cargo run -- watch [--depth N] [--model PATH]  # AI vs AI spectator mode
+cargo run -- train [--games N] [--epochs N] [--output PATH]
+
+# Training loop requires the feature flag
+cargo run --features train -- train --games 100 --epochs 10 --output chess_model
 
 # Tests
 cargo test
 
-# Clippy (always fix before committing)
+# Single test
+cargo test <test_name>
+
+# Clippy (must pass before committing)
 cargo clippy -- -D warnings
 
 # Format
@@ -103,40 +44,111 @@ cargo fmt
 
 ---
 
+## Architecture Overview
+
+All modules are implemented. Module dependency direction: `training` → `agents` → `chess`; `tui` → `chess` + `agents`.
+
+```
+src/
+├── main.rs              # clap CLI dispatch (play/watch/train subcommands)
+├── app.rs               # App state + ratatui event loop; AI runs on background thread
+├── chess/               # shakmaty wrapper — GameState, Move, rules, notation
+├── tui/                 # Ratatui widgets: board, game UI, main menu
+├── agents/              # Agent trait + Random, Human, Minimax, Negamax, NNAgent
+├── eval/                # Classical evaluator (material + PST) + neural.rs (burn MLP)
+└── training/            # dataset.rs, self_play.rs, checkpoint.rs, trainer.rs (feature-gated)
+```
+
+### Agent Trait
+
+```rust
+pub trait Agent {
+    fn select_move(&mut self, state: &GameState, time_budget: Option<Duration>) -> Move;
+    fn name(&self) -> &str;
+}
+```
+
+Agents are interchangeable in both game play and training. `NNAgent` is the default AI (negamax + NN eval); falls back to random weights if no model file is provided.
+
+### Feature Flags
+
+- `train` — enables `burn/train`, `burn/autodiff`; required for `training::trainer`. Default build uses inference-only `burn/ndarray`.
+
+---
+
+## Key Dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| `ratatui 0.30` | TUI rendering |
+| `burn 0.20.1` | Deep learning (inference: `ndarray` feature; training: `train` feature) |
+| `shakmaty 0.27` | Chess rules and move generation |
+| `clap 4` | CLI with derive macros |
+| `rayon` | Parallel self-play game generation |
+| `rand 0.9` | Stochastic move selection |
+| `serde_json` | Game record serialization |
+
+---
+
 ## Development Conventions
 
-- **Edition 2024** — use modern Rust idioms; prefer `let-else`, `?` chains, and `impl Trait` in function signatures.
-- **No `unwrap()`/`expect()` in library code** — propagate errors with `thiserror` or `anyhow`; `unwrap` is acceptable only in tests and one-off scripts.
-- **No unsafe** unless absolutely required for performance-critical board representation; document every `unsafe` block.
-- **Keep the chess engine, TUI, agents, and training infrastructure as separate concerns** — cross-cutting dependencies should flow one way: `training` → `agents` → `chess`; `tui` → `chess` + `agents`.
-- **Avoid premature abstraction** — don't generalize until there are at least two concrete use cases.
-- **Tests** — unit-test move generation with known positions (perft counts), and agent correctness with forced-mate puzzles.
+- **Edition 2024** — prefer `let-else`, `?` chains, and `impl Trait` in function signatures.
+- **No `unwrap()`/`expect()` in library code** — use `thiserror` / `anyhow`; `unwrap` is acceptable only in tests.
+- **No unsafe** unless critically necessary; document every `unsafe` block.
 - **Commits** — atomic, single-concern commits with present-tense imperative messages.
+- All chess files use `#![allow(dead_code)]` to suppress "library in progress" warnings.
+
+---
+
+## Critical shakmaty 0.27 API Notes
+
+- Use `UciMove` (not deprecated `Uci`); errors are `ParseUciMoveError` / `IllegalUciMoveError`.
+- FEN: `Fen::from_position(pos, EnPassantMode::Legal)` / `Epd::from_position(pos, EnPassantMode::Legal)`.
+- SAN: `SanPlus::from_move(pos.clone(), &mv)` (consumes pos — clone first); `from_move_and_play_unchecked(&mut pos, &mv)` advances in-place.
+- `pos.play(&mv)` returns `Result<Self, PlayError<Self>>` — use `.clone().play(&mv)` to avoid `mem::replace`.
+- `pos.fullmoves()` returns `NonZeroU32`; call `.get()` for `u32`.
+- `pos.is_insufficient_material()` checks both colors (provided method on `Position` trait).
+- Iterate squares: `for rank in Rank::ALL { for file in File::ALL { let sq = Square::from_coords(file, rank); ... } }`.
+- Index: `usize::from(sq.file())` / `usize::from(sq.rank())`; Black PST uses `sq.flip_vertical()`.
+- `use shakmaty::Color as ChessColor` to avoid clash with `ratatui::style::Color`.
+
+## Critical burn 0.20.1 API Notes
+
+- `AdamWConfig::new().init()` returns `OptimizerAdaptor<AdamW,_,_>` — do not annotate the type explicitly.
+- MSE loss: `diff.clone().mul(diff).mean()` (no built-in `mse_loss` in this version).
+- `model.valid()` converts from autodiff backend to inference mode for export.
+- `CompactRecorder` used for checkpoint save/load.
+
+## Critical ratatui 0.28+ API Notes
+
+- `buf.cell_mut(Position::new(x, y))` (not deprecated `get_mut`).
+- Call `frame.area()` before `frame.buffer_mut()` to avoid borrow conflict.
+- `MainMenu` needs `#[derive(Clone)]` for `Widget::render(self, ...)`.
+- `rand 0.9` API: `rand::rng()` + `IndexedRandom::choose`.
 
 ---
 
 ## ML Agent Notes
 
-- Start with a simple value network (board position → scalar evaluation) as a drop-in replacement for the classical evaluator.
-- Use `burn`'s `autodiff` backend for training and a fast inference backend (e.g., `burn-ndarray` or `burn-wgpu`) for play.
-- Input representation: 12 bitplane encoding (one per piece type per color) + auxiliary planes (castling rights, en passant, side to move).
-- Training signal: outcome labels from self-play games (win/loss/draw) or from tablebases for endgame positions.
-- Save model configs alongside weights so experiments are reproducible.
+- Input: 13 planes × 64 squares (12 piece bitplanes + side-to-move), encoded by `encode_position` in `eval/neural.rs`.
+- Architecture: MLP 832→256→128→64→1, tanh output (value in [-1, 1]).
+- Training signal: outcome labels from self-play (win=1, loss=-1, draw=0).
+- Self-play games capped at 200 moves to prevent infinite games.
+- Save model configs alongside weights for reproducibility (`checkpoint.rs` wraps `CompactRecorder`).
 
 ---
 
-## Roadmap (High Level)
+## Roadmap
 
-
-- [ ] Chess engine with legal move generation and rule enforcement
-- [ ] Basic TUI board rendering and human input
-- [ ] Random and minimax agents (classical eval)
-- [ ] Alpha-beta with iterative deepening and move ordering
-- [ ] CLI subcommands (`play`, `watch`, `train`)
-- [ ] Value network agent (burn)
-- [ ] Self-play training pipeline
+- [x] Chess engine with legal move generation and rule enforcement
+- [x] Basic TUI board rendering and human input
+- [x] Random and minimax agents (classical eval)
+- [x] Alpha-beta with iterative deepening and move ordering
+- [x] CLI subcommands (`play`, `watch`, `train`)
+- [x] Value network agent (burn)
+- [x] Self-play training pipeline
 - [ ] Policy network / MCTS hybrid
 - [ ] Opening book support
 - [ ] ELO tracking across agent versions
 
-A planning document for this project has been generated and is available in plans/overview.md
+A planning document is available in `plans/overview.md`.

@@ -12,7 +12,7 @@ use ratatui::{DefaultTerminal, Frame};
 use shakmaty::Color as ChessColor;
 use shakmaty::{File, Outcome, Position, Rank, Role, Square};
 
-use crate::agents::{Agent, NNAgent, NegamaxAgent};
+use crate::agents::{Agent, MCTSAgent, NNAgent, NegamaxAgent};
 use crate::chess::Move;
 use crate::chess::board::GameState;
 use crate::tui::board_widget::BoardState;
@@ -39,6 +39,9 @@ pub struct App {
     ai_is_thinking: bool,
     depth: u32,
     model_path: Option<PathBuf>,
+    use_mcts: bool,
+    mcts_simulations: u32,
+    policy_model_path: Option<PathBuf>,
     status: String,
 }
 
@@ -58,14 +61,30 @@ impl App {
             ai_is_thinking: false,
             depth: 3,
             model_path: None,
+            use_mcts: false,
+            mcts_simulations: 100,
+            policy_model_path: None,
             status: String::new(),
         }
     }
 
     pub fn new_with_model(mode: MenuSelection, depth: u32, model_path: Option<PathBuf>) -> Self {
+        let mut app = Self { depth, model_path, ..Self::new() };
+        app.start_game(mode);
+        app
+    }
+
+    pub fn new_with_mcts(
+        mode: MenuSelection,
+        simulations: u32,
+        value_model: Option<PathBuf>,
+        policy_model: Option<PathBuf>,
+    ) -> Self {
         let mut app = Self {
-            depth,
-            model_path,
+            use_mcts: true,
+            mcts_simulations: simulations,
+            model_path: value_model,
+            policy_model_path: policy_model,
             ..Self::new()
         };
         app.start_game(mode);
@@ -204,6 +223,17 @@ impl App {
         NNAgent::new_random(depth)
     }
 
+    fn build_mcts_agent(&self) -> MCTSAgent {
+        let sims = self.mcts_simulations;
+        if let (Some(vp), Some(pp)) = (&self.model_path, &self.policy_model_path) {
+            match MCTSAgent::load(vp, pp, sims) {
+                Ok(agent) => return agent,
+                Err(e) => eprintln!("Warning: could not load MCTS models: {e}; using random weights"),
+            }
+        }
+        MCTSAgent::new_random(sims)
+    }
+
     /// Returns true if the app should quit.
     fn start_game(&mut self, selection: MenuSelection) -> bool {
         match selection {
@@ -231,18 +261,33 @@ impl App {
                 self.black_name = "Black".to_string();
             }
             MenuSelection::HumanVsAI => {
-                let nn = self.build_nn_agent();
                 self.ai_white = None;
-                self.black_name = format!("AI ({}) d{}", nn.name(), self.depth);
-                self.ai_black = Some(Box::new(nn));
                 self.white_name = "Human".to_string();
+                if self.use_mcts {
+                    let agent = self.build_mcts_agent();
+                    self.black_name = agent.name().to_string();
+                    self.ai_black = Some(Box::new(agent));
+                } else {
+                    let nn = self.build_nn_agent();
+                    self.black_name = format!("AI ({}) d{}", nn.name(), self.depth);
+                    self.ai_black = Some(Box::new(nn));
+                }
             }
             MenuSelection::AIVsAI => {
-                let nn = self.build_nn_agent();
-                self.white_name = format!("AI ({}) d{}", nn.name(), self.depth);
-                self.ai_white = Some(Box::new(nn));
-                self.ai_black = Some(Box::new(NegamaxAgent::new(self.depth)));
-                self.black_name = format!("AI (Negamax d{})", self.depth);
+                if self.use_mcts {
+                    let white = self.build_mcts_agent();
+                    let black = self.build_mcts_agent();
+                    self.white_name = white.name().to_string();
+                    self.black_name = black.name().to_string();
+                    self.ai_white = Some(Box::new(white));
+                    self.ai_black = Some(Box::new(black));
+                } else {
+                    let nn = self.build_nn_agent();
+                    self.white_name = format!("AI ({}) d{}", nn.name(), self.depth);
+                    self.ai_white = Some(Box::new(nn));
+                    self.ai_black = Some(Box::new(NegamaxAgent::new(self.depth)));
+                    self.black_name = format!("AI (Negamax d{})", self.depth);
+                }
             }
             _ => unreachable!(),
         }

@@ -1,12 +1,14 @@
 #![allow(dead_code, unused_imports)]
 
 pub mod human;
+pub mod mcts;
 pub mod minimax;
 pub mod negamax;
 pub mod nn_agent;
 pub mod random;
 
 pub use human::HumanAgent;
+pub use mcts::MCTSAgent;
 pub use minimax::MinimaxAgent;
 pub use negamax::NegamaxAgent;
 pub use nn_agent::NNAgent;

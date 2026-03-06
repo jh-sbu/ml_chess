@@ -18,4 +18,5 @@ burn       = { version = "0.20.1", features = ["ndarray"] }
 
 [features]
 default = []
+mcts    = []
 train   = ["burn/train", "burn/autodiff", "burn/ndarray"]

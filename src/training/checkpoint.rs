@@ -8,6 +8,7 @@ use burn::module::Module;
 use burn::record::{CompactRecorder, Recorder};
 
 use crate::eval::neural::{ChessValueNet, ChessValueNetConfig};
+use crate::eval::policy::{ChessPolicyNet, ChessPolicyNetConfig};
 
 /// Save an NdArray-backend model to disk. The recorder appends `.mpk` to the path.
 pub fn save_model(model: &ChessValueNet<NdArray>, path: &Path) -> anyhow::Result<()> {
@@ -24,6 +25,24 @@ pub fn load_model(path: &Path) -> anyhow::Result<ChessValueNet<NdArray>> {
     let record = CompactRecorder::new()
         .load(path.to_path_buf(), &device)
         .map_err(|e| anyhow::anyhow!("Failed to load model from {}: {e}", path.display()))?;
+    Ok(base.load_record(record))
+}
+
+/// Save a policy model checkpoint. The recorder appends `.mpk` to the path.
+pub fn save_policy_model(model: &ChessPolicyNet<NdArray>, path: &Path) -> anyhow::Result<()> {
+    CompactRecorder::new()
+        .record(model.clone().into_record(), path.to_path_buf())
+        .map_err(|e| anyhow::anyhow!("Failed to save policy model to {}: {e}", path.display()))?;
+    Ok(())
+}
+
+/// Load a policy model checkpoint. Path should be given without extension.
+pub fn load_policy_model(path: &Path) -> anyhow::Result<ChessPolicyNet<NdArray>> {
+    let device = NdArrayDevice::default();
+    let base = ChessPolicyNetConfig::new().init::<NdArray>(&device);
+    let record = CompactRecorder::new()
+        .load(path.to_path_buf(), &device)
+        .map_err(|e| anyhow::anyhow!("Failed to load policy model from {}: {e}", path.display()))?;
     Ok(base.load_record(record))
 }
 

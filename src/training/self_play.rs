@@ -4,11 +4,12 @@ use rayon::prelude::*;
 use shakmaty::{Color, Position};
 
 use crate::agents::Agent;
+use crate::agents::mcts::MCTSAgent;
 use crate::agents::nn_agent::NNAgent;
 use crate::chess::{GameResult, GameState};
 use crate::chess::rules::game_result;
 
-use super::dataset::GameRecord;
+use super::dataset::{GameRecord, MctsGameRecord, MoveVisit};
 
 /// Generate `n` self-play games using NNAgent with `depth` search ply.
 /// Games are generated in parallel via rayon.
@@ -48,6 +49,49 @@ fn play_one_game(depth: u32) -> GameRecord {
             black.select_move(&state, time_budget)
         };
 
+        state.apply_move(mv).expect("agent returned illegal move");
+    }
+}
+
+/// Generate `n` MCTS self-play games, each agent running at least `simulations` rollouts.
+pub fn generate_mcts_games(n: usize, simulations: u32) -> Vec<MctsGameRecord> {
+    (0..n)
+        .into_par_iter()
+        .map(|_| play_one_mcts_game(simulations))
+        .collect()
+}
+
+fn play_one_mcts_game(simulations: u32) -> MctsGameRecord {
+    let mut white = MCTSAgent::new_random(simulations);
+    let mut black = MCTSAgent::new_random(simulations);
+    let mut state = GameState::new();
+    let mut positions: Vec<String> = Vec::new();
+    let mut move_visits_all: Vec<Vec<MoveVisit>> = Vec::new();
+    let time_budget = Some(Duration::from_secs(2));
+
+    loop {
+        if let Some(result) = game_result(&state.position, state.halfmove_clock()) {
+            let outcome = match result {
+                GameResult::WhiteWins => 1.0,
+                GameResult::BlackWins => -1.0,
+                GameResult::Draw => 0.0,
+            };
+            return MctsGameRecord { positions, move_visits: move_visits_all, outcome };
+        }
+
+        if state.history.len() >= 200 {
+            return MctsGameRecord { positions, move_visits: move_visits_all, outcome: 0.0 };
+        }
+
+        let current_fen = state.to_fen();
+        let (mv, visits) = if state.position.turn() == Color::White {
+            white.select_move_with_visits(&state, time_budget)
+        } else {
+            black.select_move_with_visits(&state, time_budget)
+        };
+
+        positions.push(current_fen);
+        move_visits_all.push(visits);
         state.apply_move(mv).expect("agent returned illegal move");
     }
 }

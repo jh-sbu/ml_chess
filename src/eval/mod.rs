@@ -2,8 +2,10 @@
 
 pub mod classical;
 pub mod neural;
+pub mod policy;
 
 pub use classical::evaluate;
+pub use policy::{ChessPolicyNet, ChessPolicyNetConfig, encode_move, policy_net_forward};
 
 pub type Score = i32;
 pub const MATE_SCORE: Score = 1_000_000;
