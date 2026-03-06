@@ -54,8 +54,8 @@ src/
 ├── app.rs               # App state + ratatui event loop; AI runs on background thread
 ├── chess/               # shakmaty wrapper — GameState, Move, rules, notation
 ├── tui/                 # Ratatui widgets: board, game UI, main menu
-├── agents/              # Agent trait + Random, Human, Minimax, Negamax, NNAgent
-├── eval/                # Classical evaluator (material + PST) + neural.rs (burn MLP)
+├── agents/              # Agent trait + Random, Human, Minimax, Negamax, NNAgent, MCTSAgent
+├── eval/                # Classical evaluator (material + PST) + neural.rs (value MLP) + policy.rs (policy net)
 └── training/            # dataset.rs, self_play.rs, checkpoint.rs, trainer.rs (feature-gated)
 ```
 
@@ -68,11 +68,12 @@ pub trait Agent {
 }
 ```
 
-Agents are interchangeable in both game play and training. `NNAgent` is the default AI (negamax + NN eval); falls back to random weights if no model file is provided.
+Agents are interchangeable in both game play and training. `NNAgent` is the default AI (negamax + NN eval); falls back to random weights if no model file is provided. `MCTSAgent` uses PUCT tree search guided by the policy network.
 
 ### Feature Flags
 
 - `train` — enables `burn/train`, `burn/autodiff`; required for `training::trainer`. Default build uses inference-only `burn/ndarray`.
+- `mcts` — feature flag for MCTS agent (currently a no-op marker; MCTSAgent is always compiled).
 
 ---
 
@@ -130,11 +131,28 @@ Agents are interchangeable in both game play and training. `NNAgent` is the defa
 
 ## ML Agent Notes
 
-- Input: 13 planes × 64 squares (12 piece bitplanes + side-to-move), encoded by `encode_position` in `eval/neural.rs`.
+### Value Network (`eval/neural.rs`)
+- Input: 13 planes × 64 squares (12 piece bitplanes + side-to-move), encoded by `encode_position`.
 - Architecture: MLP 832→256→128→64→1, tanh output (value in [-1, 1]).
-- Training signal: outcome labels from self-play (win=1, loss=-1, draw=0).
+- Training signal: outcome labels from self-play (win=1, loss=-1, draw=0). MSE loss.
+
+### Policy Network (`eval/policy.rs`)
+- Same 832-dimensional input as value net.
+- Architecture: MLP 832→256→128→4096, softmax output over all 64×64 move encodings.
+- `encode_move(mv)` maps a move to an index in [0, 4096). `policy_net_forward` returns log-probabilities.
+- Training signal: visit counts from MCTS (`MctsGameRecord`). Cross-entropy loss (log-sum-exp stable).
+
+### MCTS (`agents/mcts.rs`)
+- `MctsTree` uses an arena allocator (`Vec<MctsNode>`) to avoid recursive ownership.
+- Selection: PUCT formula; expansion uses policy net priors; backup propagates value estimates.
+- `MCTSAgent::select_move_with_visits` returns move + visit counts for training data collection.
+- `--simulations N` CLI flag controls MCTS rollout budget (default: 100). `--mcts` flag enables MCTSAgent.
+- `--policy-model PATH` loads policy weights; `--policy-output PATH` sets checkpoint output for training.
+
+### Training Infrastructure
 - Self-play games capped at 200 moves to prevent infinite games.
-- Save model configs alongside weights for reproducibility (`checkpoint.rs` wraps `CompactRecorder`).
+- `generate_mcts_games(n, sims)` in `self_play.rs` collects `MctsGameRecord` (positions + visit vectors + outcome).
+- `save_model`/`load_model` and `save_policy_model`/`load_policy_model` in `checkpoint.rs` wrap `CompactRecorder`.
 
 ---
 
@@ -147,7 +165,7 @@ Agents are interchangeable in both game play and training. `NNAgent` is the defa
 - [x] CLI subcommands (`play`, `watch`, `train`)
 - [x] Value network agent (burn)
 - [x] Self-play training pipeline
-- [ ] Policy network / MCTS hybrid
+- [x] Policy network / MCTS hybrid
 - [ ] Opening book support
 - [ ] ELO tracking across agent versions
 

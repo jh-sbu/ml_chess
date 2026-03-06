@@ -6,6 +6,7 @@ mod training;
 mod tui;
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 
@@ -65,6 +66,9 @@ enum Commands {
         /// Output path for saved policy model (without extension)
         #[arg(long)]
         policy_output: Option<PathBuf>,
+        /// Suppress all training output
+        #[arg(short, long)]
+        quiet: bool,
     },
 }
 
@@ -86,13 +90,13 @@ fn main() -> anyhow::Result<()> {
                 run_watch(depth.unwrap_or(3), model)
             }
         }
-        Some(Commands::Train { games, epochs, output, mcts, simulations, policy_output }) => {
+        Some(Commands::Train { games, epochs, output, mcts, simulations, policy_output, quiet }) => {
             let output = output.unwrap_or_else(|| PathBuf::from("chess_model"));
             if mcts {
                 let policy_out = policy_output.unwrap_or_else(|| PathBuf::from("chess_policy"));
-                run_train_mcts(games.unwrap_or(100), epochs.unwrap_or(10), simulations.unwrap_or(50), output, policy_out)
+                run_train_mcts(games.unwrap_or(100), epochs.unwrap_or(10), simulations.unwrap_or(50), output, policy_out, quiet)
             } else {
-                run_train(games.unwrap_or(100), epochs.unwrap_or(10), output)
+                run_train(games.unwrap_or(100), epochs.unwrap_or(10), output, quiet)
             }
         }
     }
@@ -155,27 +159,38 @@ fn run_watch_mcts(
     result
 }
 
-fn run_train(games: u32, epochs: u32, output: PathBuf) -> anyhow::Result<()> {
-    eprintln!("Generating {games} self-play games...");
-    let records = training::self_play::generate_games(games as usize, 1);
-    eprintln!(
-        "Generated {} games with {} total positions.",
-        records.len(),
-        records.iter().map(|r| r.positions.len()).sum::<usize>()
-    );
+fn run_train(games: u32, epochs: u32, output: PathBuf, quiet: bool) -> anyhow::Result<()> {
+    if !quiet {
+        eprintln!("Generating {games} self-play games...");
+    }
+    let sp_start = Instant::now();
+    let (records, stats) = training::self_play::generate_games(games as usize, 1, quiet);
+    let sp_elapsed = sp_start.elapsed();
+    if !quiet {
+        eprintln!(
+            "Self-play complete in {:.0?} — {} wins / {} draws / {} losses, avg {:.0} moves/game",
+            sp_elapsed, stats.wins, stats.draws, stats.losses, stats.avg_game_len,
+        );
+    }
 
     #[cfg(feature = "train")]
     {
         use training::trainer::{TrainingConfig, train};
         let config =
             TrainingConfig { epochs: epochs as usize, batch_size: 64, lr: 1e-3, policy_lr: None };
-        eprintln!("Training for {epochs} epochs...");
-        train(config, &records, &output)?;
-        eprintln!("Model saved to {}", output.display());
+        if !quiet {
+            eprintln!("Training for {epochs} epochs...");
+        }
+        let train_start = Instant::now();
+        train(config, &records, &output, quiet)?;
+        if !quiet {
+            eprintln!("Training complete in {:.0?}", train_start.elapsed());
+            eprintln!("Model saved to {}", output.display());
+        }
     }
     #[cfg(not(feature = "train"))]
     {
-        let _ = (epochs, output);
+        let _ = (epochs, output, records);
         eprintln!("Tip: run with `--features train` to enable the training loop.");
     }
     Ok(())
@@ -187,28 +202,41 @@ fn run_train_mcts(
     simulations: u32,
     output: PathBuf,
     policy_output: PathBuf,
+    quiet: bool,
 ) -> anyhow::Result<()> {
-    eprintln!("Generating {games} MCTS self-play games ({simulations} sims/move)...");
-    let records = training::self_play::generate_mcts_games(games as usize, simulations);
-    eprintln!(
-        "Generated {} MCTS games with {} total positions.",
-        records.len(),
-        records.iter().map(|r| r.positions.len()).sum::<usize>()
-    );
+    if !quiet {
+        eprintln!("Generating {games} MCTS self-play games ({simulations} sims/move)...");
+    }
+    let sp_start = Instant::now();
+    let (records, stats) =
+        training::self_play::generate_mcts_games(games as usize, simulations, quiet);
+    let sp_elapsed = sp_start.elapsed();
+    if !quiet {
+        eprintln!(
+            "Self-play complete in {:.0?} — {} wins / {} draws / {} losses, avg {:.0} moves/game",
+            sp_elapsed, stats.wins, stats.draws, stats.losses, stats.avg_game_len,
+        );
+    }
 
     #[cfg(feature = "train")]
     {
         use training::trainer::{TrainingConfig, train_policy};
         let config =
             TrainingConfig { epochs: epochs as usize, batch_size: 64, lr: 1e-3, policy_lr: None };
-        eprintln!("Training value + policy nets for {epochs} epochs...");
-        train_policy(&config, &records, &output, &policy_output)?;
-        eprintln!("Value model saved to {}", output.display());
-        eprintln!("Policy model saved to {}", policy_output.display());
+        if !quiet {
+            eprintln!("Training value + policy nets for {epochs} epochs...");
+        }
+        let train_start = Instant::now();
+        train_policy(&config, &records, &output, &policy_output, quiet)?;
+        if !quiet {
+            eprintln!("Training complete in {:.0?}", train_start.elapsed());
+            eprintln!("Value model saved to {}", output.display());
+            eprintln!("Policy model saved to {}", policy_output.display());
+        }
     }
     #[cfg(not(feature = "train"))]
     {
-        let _ = (epochs, output, policy_output);
+        let _ = (epochs, output, policy_output, records);
         eprintln!("Tip: run with `--features train` to enable the training loop.");
     }
     Ok(())

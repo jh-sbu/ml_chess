@@ -24,7 +24,12 @@ pub struct TrainingConfig {
     pub policy_lr: Option<f64>,
 }
 
-pub fn train(config: TrainingConfig, records: &[GameRecord], output_path: &Path) -> anyhow::Result<()> {
+pub fn train(
+    config: TrainingConfig,
+    records: &[GameRecord],
+    output_path: &Path,
+    quiet: bool,
+) -> anyhow::Result<()> {
     // Flatten records into (encoded position, target outcome) pairs.
     let mut pairs: Vec<([f32; 832], f32)> = Vec::new();
     for record in records {
@@ -52,7 +57,8 @@ pub fn train(config: TrainingConfig, records: &[GameRecord], output_path: &Path)
         for chunk in pairs.chunks(config.batch_size) {
             let batch_size = chunk.len();
 
-            let input_data: Vec<f32> = chunk.iter().flat_map(|(enc, _)| enc.iter().copied()).collect();
+            let input_data: Vec<f32> =
+                chunk.iter().flat_map(|(enc, _)| enc.iter().copied()).collect();
             let target_data: Vec<f32> = chunk.iter().map(|(_, t)| *t).collect();
 
             let input = Tensor::<TrainBackend, 1>::from_floats(input_data.as_slice(), &device)
@@ -64,16 +70,24 @@ pub fn train(config: TrainingConfig, records: &[GameRecord], output_path: &Path)
             let diff = predicted - target;
             let loss = diff.clone().mul(diff).mean();
 
+            let loss_val: f32 = loss.clone().into_data().as_slice::<f32>().map_or(0.0, |s| s[0]);
             let grads = loss.backward();
             let grads = GradientsParams::from_grads(grads, &model);
             model = optimizer.step(config.lr, model, grads);
 
-            total_loss += 1.0; // count batches; scalar extraction requires detach on autodiff backend
+            total_loss += loss_val as f64;
             batch_count += 1;
         }
 
-        eprintln!("Epoch {}/{}: {} batches processed.", epoch + 1, config.epochs, batch_count);
-        let _ = total_loss;
+        if !quiet {
+            eprintln!(
+                "Epoch {}/{}: loss = {:.4} ({} batches)",
+                epoch + 1,
+                config.epochs,
+                total_loss / batch_count as f64,
+                batch_count,
+            );
+        }
     }
 
     let inference_model = model.valid();
@@ -88,6 +102,7 @@ pub fn train_policy(
     records: &[MctsGameRecord],
     value_output: &Path,
     policy_output: &Path,
+    quiet: bool,
 ) -> anyhow::Result<()> {
     // Build (encoded_position, value_target, policy_target) triples.
     let mut triples: Vec<([f32; 832], f32, [f32; 4096])> = Vec::new();
@@ -126,13 +141,15 @@ pub fn train_policy(
     let policy_lr = config.policy_lr.unwrap_or(config.lr);
 
     for epoch in 0..config.epochs {
+        let mut total_value_loss = 0.0f64;
+        let mut total_policy_loss = 0.0f64;
         let mut batch_count = 0usize;
+
         for chunk in triples.chunks(config.batch_size) {
             let batch_size = chunk.len();
             let input_data: Vec<f32> =
                 chunk.iter().flat_map(|(enc, _, _)| enc.iter().copied()).collect();
-            let value_target_data: Vec<f32> =
-                chunk.iter().map(|(_, v, _)| *v).collect();
+            let value_target_data: Vec<f32> = chunk.iter().map(|(_, v, _)| *v).collect();
             let policy_target_data: Vec<f32> =
                 chunk.iter().flat_map(|(_, _, p)| p.iter().copied()).collect();
 
@@ -149,6 +166,7 @@ pub fn train_policy(
             let value_pred = value_model.forward(input.clone());
             let diff = value_pred - value_target;
             let value_loss = diff.clone().mul(diff).mean();
+            let value_loss_val: f32 = value_loss.clone().into_data().as_slice::<f32>().map_or(0.0, |s| s[0]);
             let grads = value_loss.backward();
             let grads = GradientsParams::from_grads(grads, &value_model);
             value_model = value_optimizer.step(config.lr, value_model, grads);
@@ -161,18 +179,26 @@ pub fn train_policy(
             let log_sum_exp = shifted.exp().sum_dim(1).log() + max_logit; // [batch, 1]
             let neg_dot = -(policy_target * logits).sum_dim(1); // [batch, 1]
             let policy_loss = (neg_dot + log_sum_exp).mean();
+            let policy_loss_val: f32 = policy_loss.clone().into_data().as_slice::<f32>().map_or(0.0, |s| s[0]);
             let grads = policy_loss.backward();
             let grads = GradientsParams::from_grads(grads, &policy_model);
             policy_model = policy_optimizer.step(policy_lr, policy_model, grads);
 
+            total_value_loss += value_loss_val as f64;
+            total_policy_loss += policy_loss_val as f64;
             batch_count += 1;
         }
-        eprintln!(
-            "MCTS Epoch {}/{}: {} batches processed.",
-            epoch + 1,
-            config.epochs,
-            batch_count
-        );
+
+        if !quiet {
+            eprintln!(
+                "MCTS Epoch {}/{}: value_loss = {:.4}, policy_loss = {:.4} ({} batches)",
+                epoch + 1,
+                config.epochs,
+                total_value_loss / batch_count as f64,
+                total_policy_loss / batch_count as f64,
+                batch_count,
+            );
+        }
     }
 
     let value_inference = value_model.valid();
@@ -201,7 +227,7 @@ mod tests {
         let output = dir.join("trained_model");
 
         let config = TrainingConfig { epochs: 1, batch_size: 2, lr: 1e-3, policy_lr: None };
-        train(config, &records, &output).expect("training should not panic");
+        train(config, &records, &output, true).expect("training should not panic");
 
         std::fs::remove_file(dir.join("trained_model.mpk")).ok();
     }
