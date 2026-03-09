@@ -166,7 +166,7 @@ Agents are interchangeable in both game play and training. `NNAgent` is the defa
 - [x] Value network agent (burn)
 - [x] Self-play training pipeline
 - [x] Policy network / MCTS hybrid
-- [ ] Opening book support
+- [x] Opening book support (Polyglot .bin, `BookAgent` wrapper)
 - [ ] ELO tracking across agent versions
 
 A planning document is available in `plans/overview.md`.

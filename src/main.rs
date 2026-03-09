@@ -34,6 +34,9 @@ enum Commands {
         /// Policy model checkpoint path (without extension)
         #[arg(long)]
         policy_model: Option<PathBuf>,
+        /// Path to a Polyglot opening book (.bin)
+        #[arg(long)]
+        opening_book: Option<PathBuf>,
     },
     /// AI vs AI spectator mode
     Watch {
@@ -47,6 +50,9 @@ enum Commands {
         simulations: Option<u32>,
         #[arg(long)]
         policy_model: Option<PathBuf>,
+        /// Path to a Polyglot opening book (.bin)
+        #[arg(long)]
+        opening_book: Option<PathBuf>,
     },
     /// Train neural network
     Train {
@@ -76,18 +82,18 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         None => run_menu(),
-        Some(Commands::Play { depth, model, mcts, simulations, policy_model }) => {
+        Some(Commands::Play { depth, model, mcts, simulations, policy_model, opening_book }) => {
             if mcts {
-                run_play_mcts(simulations.unwrap_or(100), model, policy_model)
+                run_play_mcts(simulations.unwrap_or(100), model, policy_model, opening_book)
             } else {
-                run_play(depth.unwrap_or(3), model)
+                run_play(depth.unwrap_or(3), model, opening_book)
             }
         }
-        Some(Commands::Watch { depth, model, mcts, simulations, policy_model }) => {
+        Some(Commands::Watch { depth, model, mcts, simulations, policy_model, opening_book }) => {
             if mcts {
-                run_watch_mcts(simulations.unwrap_or(100), model, policy_model)
+                run_watch_mcts(simulations.unwrap_or(100), model, policy_model, opening_book)
             } else {
-                run_watch(depth.unwrap_or(3), model)
+                run_watch(depth.unwrap_or(3), model, opening_book)
             }
         }
         Some(Commands::Train { games, epochs, output, mcts, simulations, policy_output, quiet }) => {
@@ -109,10 +115,11 @@ fn run_menu() -> anyhow::Result<()> {
     result
 }
 
-fn run_play(depth: u32, model: Option<PathBuf>) -> anyhow::Result<()> {
+fn run_play(depth: u32, model: Option<PathBuf>, book: Option<PathBuf>) -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
-    let result = app::App::new_with_model(crate::tui::menu::MenuSelection::HumanVsAI, depth, model)
-        .run(&mut terminal);
+    let result =
+        app::App::new_with_model(crate::tui::menu::MenuSelection::HumanVsAI, depth, model, book)
+            .run(&mut terminal);
     ratatui::restore();
     result
 }
@@ -121,6 +128,7 @@ fn run_play_mcts(
     simulations: u32,
     value_model: Option<PathBuf>,
     policy_model: Option<PathBuf>,
+    book: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
     let result = app::App::new_with_mcts(
@@ -128,16 +136,18 @@ fn run_play_mcts(
         simulations,
         value_model,
         policy_model,
+        book,
     )
     .run(&mut terminal);
     ratatui::restore();
     result
 }
 
-fn run_watch(depth: u32, model: Option<PathBuf>) -> anyhow::Result<()> {
+fn run_watch(depth: u32, model: Option<PathBuf>, book: Option<PathBuf>) -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
-    let result = app::App::new_with_model(crate::tui::menu::MenuSelection::AIVsAI, depth, model)
-        .run(&mut terminal);
+    let result =
+        app::App::new_with_model(crate::tui::menu::MenuSelection::AIVsAI, depth, model, book)
+            .run(&mut terminal);
     ratatui::restore();
     result
 }
@@ -146,6 +156,7 @@ fn run_watch_mcts(
     simulations: u32,
     value_model: Option<PathBuf>,
     policy_model: Option<PathBuf>,
+    book: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
     let result = app::App::new_with_mcts(
@@ -153,6 +164,7 @@ fn run_watch_mcts(
         simulations,
         value_model,
         policy_model,
+        book,
     )
     .run(&mut terminal);
     ratatui::restore();

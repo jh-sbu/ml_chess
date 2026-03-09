@@ -12,7 +12,7 @@ use ratatui::{DefaultTerminal, Frame};
 use shakmaty::Color as ChessColor;
 use shakmaty::{File, Outcome, Position, Rank, Role, Square};
 
-use crate::agents::{Agent, MCTSAgent, NNAgent, NegamaxAgent};
+use crate::agents::{Agent, BookAgent, MCTSAgent, NNAgent, NegamaxAgent, OpeningBook};
 use crate::chess::Move;
 use crate::chess::board::GameState;
 use crate::tui::board_widget::BoardState;
@@ -42,6 +42,7 @@ pub struct App {
     use_mcts: bool,
     mcts_simulations: u32,
     policy_model_path: Option<PathBuf>,
+    book_path: Option<PathBuf>,
     status: String,
 }
 
@@ -64,12 +65,18 @@ impl App {
             use_mcts: false,
             mcts_simulations: 100,
             policy_model_path: None,
+            book_path: None,
             status: String::new(),
         }
     }
 
-    pub fn new_with_model(mode: MenuSelection, depth: u32, model_path: Option<PathBuf>) -> Self {
-        let mut app = Self { depth, model_path, ..Self::new() };
+    pub fn new_with_model(
+        mode: MenuSelection,
+        depth: u32,
+        model_path: Option<PathBuf>,
+        book_path: Option<PathBuf>,
+    ) -> Self {
+        let mut app = Self { depth, model_path, book_path, ..Self::new() };
         app.start_game(mode);
         app
     }
@@ -79,16 +86,29 @@ impl App {
         simulations: u32,
         value_model: Option<PathBuf>,
         policy_model: Option<PathBuf>,
+        book_path: Option<PathBuf>,
     ) -> Self {
         let mut app = Self {
             use_mcts: true,
             mcts_simulations: simulations,
             model_path: value_model,
             policy_model_path: policy_model,
+            book_path,
             ..Self::new()
         };
         app.start_game(mode);
         app
+    }
+
+    fn wrap_with_book(&self, agent: Box<dyn Agent + Send>) -> Box<dyn Agent + Send> {
+        let Some(path) = &self.book_path else { return agent };
+        match OpeningBook::load(path) {
+            Ok(book) => Box::new(BookAgent::new(agent, book)),
+            Err(e) => {
+                eprintln!("Warning: could not load opening book: {e}; playing without book");
+                agent
+            }
+        }
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -266,11 +286,11 @@ impl App {
                 if self.use_mcts {
                     let agent = self.build_mcts_agent();
                     self.black_name = agent.name().to_string();
-                    self.ai_black = Some(Box::new(agent));
+                    self.ai_black = Some(self.wrap_with_book(Box::new(agent)));
                 } else {
                     let nn = self.build_nn_agent();
                     self.black_name = format!("AI ({}) d{}", nn.name(), self.depth);
-                    self.ai_black = Some(Box::new(nn));
+                    self.ai_black = Some(self.wrap_with_book(Box::new(nn)));
                 }
             }
             MenuSelection::AIVsAI => {
@@ -279,13 +299,14 @@ impl App {
                     let black = self.build_mcts_agent();
                     self.white_name = white.name().to_string();
                     self.black_name = black.name().to_string();
-                    self.ai_white = Some(Box::new(white));
-                    self.ai_black = Some(Box::new(black));
+                    self.ai_white = Some(self.wrap_with_book(Box::new(white)));
+                    self.ai_black = Some(self.wrap_with_book(Box::new(black)));
                 } else {
                     let nn = self.build_nn_agent();
                     self.white_name = format!("AI ({}) d{}", nn.name(), self.depth);
-                    self.ai_white = Some(Box::new(nn));
-                    self.ai_black = Some(Box::new(NegamaxAgent::new(self.depth)));
+                    let negamax: Box<dyn Agent + Send> = Box::new(NegamaxAgent::new(self.depth));
+                    self.ai_white = Some(self.wrap_with_book(Box::new(nn)));
+                    self.ai_black = Some(self.wrap_with_book(negamax));
                     self.black_name = format!("AI (Negamax d{})", self.depth);
                 }
             }
